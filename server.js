@@ -66,15 +66,21 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Database connection
-mongoose
-  .connect(process.env.DATABASECLOUD)
-  .then(() => {
-    console.log("DataBase Successfully Connected");
-  })
-  .catch((err) => {
-    console.log("Unable to connect to database", err);
-    process.exit(1);
-  });
+const dbUri = process.env.DATABASECLOUD || process.env.DATABASE_URL || process.env.MONGODB_URI;
+
+if (!dbUri) {
+  console.error("FATAL ERROR: DATABASECLOUD environment variable is not defined in the current environment!");
+} else {
+  mongoose
+    .connect(dbUri)
+    .then(() => {
+      console.log("DataBase Successfully Connected");
+    })
+    .catch((err) => {
+      console.error("Unable to connect to database:", err.message);
+    });
+}
+
 
 // Routes
 const authRoutes = require("./routes/user.routes");
