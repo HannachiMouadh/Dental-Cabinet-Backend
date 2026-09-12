@@ -82,7 +82,7 @@ app.use(cors(corsOptions));
 
 
 // Database connection
-const dbUri = process.env.DATABASECLOUD || process.env.DATABASE_URL || process.env.MONGODB_URI;
+const dbUri = process.env.DATABASECLOUD;
 
 if (!dbUri) {
   console.error("FATAL ERROR: DATABASECLOUD environment variable is not defined in the current environment!");
@@ -119,4 +119,4 @@ if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
   });
 }
 
-module.exports = server;
+module.exports = server;
