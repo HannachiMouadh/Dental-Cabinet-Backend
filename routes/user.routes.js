@@ -85,10 +85,26 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    // Support both bcrypt hash and direct plain-text entry in database (auto-upgrade to hash)
+    let isMatch = false;
+    const isBcryptHash = typeof user.password === "string" && /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(user.password);
+
+    if (isBcryptHash) {
+      isMatch = await bcrypt.compare(password, user.password);
+    } else {
+      // Plain text match (e.g. manually set in MongoDB Atlas)
+      isMatch = (password === user.password);
+      if (isMatch) {
+        // Automatically upgrade to bcrypt hash for future security
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(password, salt);
+      }
+    }
+
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid email or password" });
     }
+
 
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
