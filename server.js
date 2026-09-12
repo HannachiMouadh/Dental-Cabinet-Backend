@@ -16,20 +16,28 @@ const rawAllowedOrigins = process.env.ALLOWED_ORIGINS
   : [
     process.env.CLIENT_URL_LOCAL,
     process.env.CLIENT_URL_PROD,
+    "https://dental-cabinet-mu.vercel.app",
+    "https://dental-cabinet.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000"
   ].filter(Boolean);
 
-const corsOriginHandler = (origin, callback) => {
-  // Allow requests with no origin (like mobile apps, curl, server-to-server)
-  if (!origin) return callback(null, true);
-  
-  const isAllowed = rawAllowedOrigins.some((allowed) => {
-    // Exact match or localhost match during development
-    return allowed === origin || allowed === "*" || (process.env.NODE_ENV !== "production" && origin.includes("localhost"));
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // server-to-server or mobile/curl
+  return rawAllowedOrigins.some((allowed) => {
+    if (allowed === "*" || allowed === origin) return true;
+    if (origin.includes("localhost")) return true;
+    // Allow any Vercel deployment preview / production of this frontend
+    if (origin.endsWith(".vercel.app") && origin.includes("dental-cabinet")) return true;
+    return false;
   });
+};
 
-  if (isAllowed) {
+const corsOriginHandler = (origin, callback) => {
+  if (isOriginAllowed(origin)) {
     callback(null, true);
   } else {
+    console.warn(`Blocked by CORS origin: ${origin}`);
     callback(new Error(`CORS blocked for origin: ${origin}`));
   }
 };
@@ -37,8 +45,10 @@ const corsOriginHandler = (origin, callback) => {
 // Socket.io initialization for real-time notifications (Secretary <-> Doctor)
 const io = new Server(server, {
   cors: {
-    origin: corsOriginHandler,
-    methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
+    origin: (origin, callback) => {
+      callback(null, isOriginAllowed(origin));
+    },
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     credentials: true
   }
 });
@@ -59,11 +69,17 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 const corsOptions = {
-  origin: corsOriginHandler,
-  optionsSuccessStatus: 200,
-  credentials: true
+  origin: (origin, callback) => {
+    callback(null, isOriginAllowed(origin));
+  },
+  methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+  optionsSuccessStatus: 204
 };
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
 
 // Database connection
 const dbUri = process.env.DATABASECLOUD || process.env.DATABASE_URL || process.env.MONGODB_URI;
