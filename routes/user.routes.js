@@ -129,9 +129,14 @@ router.post("/login", async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error during login", error: error.message });
+    console.error("CRITICAL LOGIN ERROR:", error);
+    res.status(500).json({
+      message: `Erreur serveur lors de la connexion: ${error.message || error}`,
+      error: error.message || String(error)
+    });
   }
 });
+
 
 // Refresh Token Route
 router.post("/refresh-token", async (req, res) => {
