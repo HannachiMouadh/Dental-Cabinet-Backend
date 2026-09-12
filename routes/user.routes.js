@@ -3,6 +3,8 @@ const router = express.Router();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
+const { verifyToken } = require("../middleware/auth.middleware");
+
 
 const ACCESS_SECRET = process.env.SECRET || "ACCESS_TOKEN_SECRET";
 const REFRESH_SECRET = process.env.REFRESH_SECRET || "REFRESH_TOKEN_SECRET";
@@ -231,4 +233,90 @@ router.put("/profile/:id", async (req, res) => {
   }
 });
 
+// ==========================================
+// DOCTOR-ONLY USER MANAGEMENT ROUTES
+// ==========================================
+
+// 1. Get all staff users (Doctor only)
+router.get("/", verifyToken(["doctor"]), async (req, res) => {
+  try {
+    const users = await User.find({}, "-password -refreshToken").sort({ createdAt: -1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: "Erreur lors de la récupération des utilisateurs", error: error.message });
+  }
+});
+
+// 2. Doctor edit user account (Secretary or staff)
+router.put("/:id", verifyToken(["doctor"]), async (req, res) => {
+  try {
+    const { name, lastName, email, role, phone, specialty, dateOfBirth, gender, password } = req.body;
+    const targetUser = await User.findById(req.params.id);
+
+    if (!targetUser) {
+      return res.status(404).json({ message: "Utilisateur non trouvé" });
+    }
+
+    if (name) targetUser.name = name;
+    if (lastName) targetUser.lastName = lastName;
+    if (email) targetUser.email = email.toLowerCase();
+    if (role && ["doctor", "secretary"].includes(role)) targetUser.role = role;
+    if (phone !== undefined) targetUser.phone = phone;
+    if (specialty !== undefined) targetUser.specialty = specialty;
+    if (dateOfBirth) targetUser.dateOfBirth = dateOfBirth;
+    if (gender) targetUser.gender = gender;
+
+    // If password reset by doctor
+    if (password && password.trim().length > 0) {
+      const salt = await bcrypt.genSalt(10);
+      targetUser.password = await bcrypt.hash(password, salt);
+    }
+
+    await targetUser.save();
+
+    res.json({
+      message: "Compte utilisateur mis à jour avec succès",
+      user: {
+        id: targetUser._id,
+        _id: targetUser._id,
+        name: targetUser.name,
+        lastName: targetUser.lastName,
+        email: targetUser.email,
+        role: targetUser.role,
+        phone: targetUser.phone,
+        specialty: targetUser.specialty,
+        gender: targetUser.gender,
+        dateOfBirth: targetUser.dateOfBirth
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Erreur lors de la mise à jour de l'utilisateur", error: error.message });
+  }
+});
+
+// 3. Doctor delete user account (Secretary)
+router.delete("/:id", verifyToken(["doctor"]), async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+
+    // Prevent doctor from deleting themselves
+    if (req.user?.id === targetUserId) {
+      return res.status(400).json({ message: "Vous ne pouvez pas supprimer votre propre compte médecin !" });
+    }
+
+    const deletedUser = await User.findByIdAndDelete(targetUserId);
+    if (!deletedUser) {
+      return res.status(404).json({ message: "Utilisateur introuvable" });
+    }
+
+    res.json({
+      message: "Compte utilisateur supprimé avec succès",
+      id: targetUserId
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Erreur lors de la suppression de l'utilisateur", error: error.message });
+  }
+});
+
 module.exports = router;
+
