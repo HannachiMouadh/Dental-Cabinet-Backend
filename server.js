@@ -81,21 +81,50 @@ app.use(cors(corsOptions));
 
 
 
-// Database connection
-const dbUri = process.env.DATABASECLOUD;
+// Cached Database Connection for Vercel Serverless
+let cachedPromise = null;
 
-if (!dbUri) {
-  console.error("FATAL ERROR: DATABASECLOUD environment variable is not defined in the current environment!");
-} else {
-  mongoose
-    .connect(dbUri)
-    .then(() => {
+const connectDB = async () => {
+  if (mongoose.connection.readyState >= 1) {
+    return;
+  }
+
+  const dbUri = process.env.DATABASECLOUD;
+  if (!dbUri) {
+    console.error("FATAL ERROR: DATABASECLOUD environment variable is not defined!");
+    return;
+  }
+
+  if (!cachedPromise) {
+    cachedPromise = mongoose.connect(dbUri, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10
+    }).then(() => {
       console.log("DataBase Successfully Connected");
-    })
-    .catch((err) => {
+    }).catch((err) => {
+      cachedPromise = null;
       console.error("Unable to connect to database:", err.message);
+      throw err;
     });
-}
+  }
+
+  await cachedPromise;
+};
+
+// Connect immediately on startup
+connectDB().catch(() => {});
+
+// Middleware to ensure database is ready before processing API requests
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    res.status(503).json({ message: "Erreur de connexion à la base de données", error: err.message });
+  }
+});
+
 
 
 // Routes
